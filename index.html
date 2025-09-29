@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fitness Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="auth-container" class="auth-container">
+        <div class="card">
+            <h2>Fitness Tracker Login</h2>
+            <p id="auth-error" class="placeholder error"></p>
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" placeholder="you@example.com">
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" placeholder="••••••••">
+            </div>
+            <div class="auth-buttons">
+                <button id="login-btn" class="btn">Login</button>
+                <button id="signup-btn" class="btn btn-secondary">Sign Up</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-container" class="container" style="display: none;">
+        <header class="app-header">
+            <h1>Fitness Tracker</h1>
+            <button id="signout-btn" class="btn btn-secondary">Sign Out</button>
+        </header>
+
+        <nav class="tabs">
+            <button id="show-workout-tab" class="tab-btn active">Workout</button>
+            <button id="show-food-tab" class="tab-btn">Food</button>
+        </nav>
+
+        <main>
+            <div id="workout-tab-content" class="tab-content active">
+                <div class="controls">
+                    <div class="card">
+                        <h2>Log Exercise</h2>
+                        <form id="workout-form">
+                            <div class="form-group"><label for="exercise-select">Exercise</label><select id="exercise-select" required><option value="">Choose an exercise...</option></select></div>
+                            <div class="form-group" id="custom-exercise-container" style="display: none;"><label for="custom-exercise-name">Custom Exercise Name</label><input type="text" id="custom-exercise-name" placeholder="e.g., Kettlebell Swings"></div>
+                            <div class="form-row"><div class="form-group"><label for="sets">Sets</label><input type="number" id="sets" min="1" placeholder="3" required></div><div class="form-group"><label for="reps">Reps</label><input type="number" id="reps" min="1" placeholder="10" required></div><div class="form-group"><label for="weight">Weight</label><input type="number" id="weight" min="0" step="any" placeholder="60"></div></div>
+                            <button type="submit" class="btn"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>Add Exercise</button>
+                        </form>
+                    </div>
+                    <button id="save-workout-btn" class="btn btn-primary">Save Full Workout</button>
+                </div>
+                <div class="display">
+                    <div class="display-box"><h2>Current Workout</h2><ul id="current-workout-list"></ul></div>
+                    <div class="display-box chart-container"><h2>Progress Chart</h2><p id="chart-placeholder" class="placeholder">Click an exercise in your history...</p><canvas id="progress-chart"></canvas></div>
+                    <div class="display-box"><h2>Workout History</h2><ul id="workout-history-list"></ul></div>
+                </div>
+            </div>
+            <div id="food-tab-content" class="tab-content">
+                <div class="controls">
+                    <div class="card">
+                        <h2>Set Daily Goals</h2>
+                        <form id="goals-form">
+                            <div class="form-row">
+                                <div class="form-group"><label for="goal-calories">Calories</label><input type="number" id="goal-calories" min="0" placeholder="2000"></div>
+                                <div class="form-group"><label for="goal-protein">Protein (g)</label><input type="number" id="goal-protein" min="0" placeholder="150"></div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group"><label for="goal-carbs">Carbs (g)</label><input type="number" id="goal-carbs" min="0" placeholder="200"></div>
+                                <div class="form-group"><label for="goal-fat">Fat (g)</label><input type="number" id="goal-fat" min="0" placeholder="70"></div>
+                            </div>
+                            <button type="submit" class="btn">Set Goals</button>
+                        </form>
+                    </div>
+                     <div class="card">
+                        <h2>Food Diary</h2>
+                        <form id="food-search-form">
+                            <div class="form-group"><label for="food-search-input">Search Foods & Brands</label><input type="text" id="food-search-input" placeholder="e.g., '1 cup oatmeal' or 'Starbucks'"></div>
+                            <button type="submit" class="btn btn-secondary">Search</button>
+                        </form>
+                        <div id="search-results-container"></div>
+                        <div id="selected-food-container" style="display: none;"></div>
+                    </div>
+                </div>
+                <div class="display">
+                    <div class="display-box"><h2>Today's Food Diary</h2><div id="daily-food-log"><p class="placeholder">No food logged for today.</p></div><div id="daily-summary"></div></div>
+                    <div class="display-box chart-container"><h2>Weekly Caloric Intake</h2><canvas id="calorie-history-chart"></canvas></div>
+                    <div class="display-box chart-container"><h2>Weekly Protein Intake</h2><canvas id="protein-history-chart"></canvas></div>
+                    <div class="display-box chart-container"><h2>Weekly Carb Intake</h2><canvas id="carb-history-chart"></canvas></div>
+                    <div class="display-box chart-container"><h2>Weekly Fat Intake</h2><canvas id="fat-history-chart"></canvas></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.7/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.7/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.7/firebase-firestore-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="script.js"></script>
+    <script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-analytics.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  const firebaseConfig = {
+    apiKey: "AIzaSyC-ri85nqnJGvrrj775WuejX-QwPAY_Gy8",
+    authDomain: "fitness-tracker-995c6.firebaseapp.com",
+    projectId: "fitness-tracker-995c6",
+    storageBucket: "fitness-tracker-995c6.firebasestorage.app",
+    messagingSenderId: "130310968795",
+    appId: "1:130310968795:web:34cff6a756705cb8da03fe",
+    measurementId: "G-VWVW12CGLV"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+</script>
+</body>
+</html>

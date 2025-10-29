@@ -1,481 +1,1030 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { 
+  getAuth, 
+  signInAnonymously, 
+  onAuthStateChanged 
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { 
+  getFirestore, 
+  doc, 
+  addDoc, 
+  collection, 
+  query, 
+  onSnapshot, 
+  serverTimestamp,
+  setLogLevel,
+  deleteDoc,
+  where // <-- Import 'where' here
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+// --- Firebase & App Initialization ---
+
+// Enable debug logging for Firestore
+setLogLevel('Debug');
+
+//
+// ***************************************************************
+// * PASTE YOUR FIREBASE CONFIG HERE
+// *
+// * 1. Go to https://firebase.google.com/ and create a project.
+// * 2. Add a Web App (</>) to your project.
+// * 3. Copy the `firebaseConfig` object given to you.
+// * 4. Paste it here, replacing the placeholder object.
+// *
+// ***************************************************************
+const firebaseConfig = {
+apiKey: "AIzaSyC-ri85nqnJGvrrj775WuejX-QwPAY_Gy8",
+authDomain: "fitness-tracker-995c6.firebaseapp.com",
+projectId: "fitness-tracker-995c6",
+storageBucket: "fitness-tracker-995c6.firebasestorage.app",
+messagingSenderId: "130310968795",
+appId: "1:130310968795:web:34cff6a756705cb8da03fe",
+measurementId: "G-VWVW12CGLV"
+};
+
+
+// Initialize Firebase
+let app, db, auth;
+let userId = null;
+let workoutCollectionRef = null;
+let templateCollectionRef = null;
+let chartInstance = null; // To hold the chart object
+let allWorkouts = []; // To store history data for graphing
+let workoutToDelete = null; // Variable to store ID for deletion confirmation
+let isFirstHistoryLoad = true; // Flag for efficient history loading
+let isFirstTemplateLoad = true; // Flag for efficient template loading
+
+try {
+  app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+  auth = getAuth(app);
+  console.log("Firebase Initialized Successfully");
+} catch (e) {
+  console.error("Error initializing Firebase: ", e);
+  // We can't access app-container here, so we'll handle this inside DOMContentLoaded
+}
+
+// Wait for the DOM to be fully loaded before running script
 document.addEventListener('DOMContentLoaded', () => {
-    // --- FIREBASE SETUP ---
-    // PASTE YOUR COPIED FIREBASE CONFIG OBJECT HERE
-  const firebaseConfig = {
-    apiKey: "AIzaSyC-ri85nqnJGvrrj775WuejX-QwPAY_Gy8",
-    authDomain: "fitness-tracker-995c6.firebaseapp.com",
-    projectId: "fitness-tracker-995c6",
-    storageBucket: "fitness-tracker-995c6.firebasestorage.app",
-    messagingSenderId: "130310968795",
-    appId: "1:130310968795:web:34cff6a756705cb8da03fe",
-    measurementId: "G-VWVW12CGLV"
-  };
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.firestore();
+
+  // --- DOM Element References ---
+  const appContainer = document.getElementById('app-container');
+  const tabLog = document.getElementById('tab-log');
+  const tabHistory = document.getElementById('tab-history');
+  const tabTemplates = document.getElementById('tab-templates');
+  const tabProgress = document.getElementById('tab-progress');
+  const logView = document.getElementById('log-view');
+  const historyView = document.getElementById('history-view');
+  const templatesView = document.getElementById('templates-view');
+  const progressView = document.getElementById('progress-view');
+  const addExerciseBtn = document.getElementById('add-exercise-btn');
+  const currentWorkoutList = document.getElementById('current-workout-list');
+  const saveWorkoutBtn = document.getElementById('save-workout-btn');
+  const workoutDateInput = document.getElementById('workout-date');
+  const historyListContainer = document.getElementById('history-list-container');
+  const templatesListContainer = document.getElementById('templates-list-container');
+  
+  // Modal elements
+  const messageModal = document.getElementById('message-modal');
+  const messageText = document.getElementById('message-text');
+  const closeMessageBtn = document.getElementById('close-message-btn');
+  
+  const savePresetModal = document.getElementById('save-preset-modal');
+  const closePresetModalBtn = document.getElementById('close-preset-modal-btn');
+  const confirmSavePresetBtn = document.getElementById('confirm-save-preset-btn');
+  const presetNameInput = document.getElementById('preset-name-input');
+  
+  // New Delete Confirmation Modal elements
+  const deleteConfirmModal = document.getElementById('delete-confirm-modal');
+  const deleteConfirmText = document.getElementById('delete-confirm-text');
+  const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
+  const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+  
+  const userIdDisplay = document.getElementById('user-id-display');
+  
+  // New Preset Elements
+  const savePresetBtn = document.getElementById('save-preset-btn');
+  const loadPresetSelect = document.getElementById('load-preset-select');
+
+  // New Progress View Elements
+  const progressExerciseSelect = document.getElementById('progress-exercise-select');
+  const progressMetricSelect = document.getElementById('progress-metric-select');
+  
+  // --- HTML Template References ---
+  const exerciseTemplate = document.getElementById('exercise-template');
+  const setItemTemplate = document.getElementById('set-item-template');
+
+  // Check for initialization errors
+  if (!app || firebaseConfig.apiKey === "YOUR_API_KEY") {
+    let errorMsg = !app 
+      ? "Error initializing application. Please check console."
+      : "Firebase is not configured. Please paste your `firebaseConfig` object into the script tag.";
     
-    // --- EDAMAM API KEYS ---
-    const EDAMAM_APP_ID = 'b12bf96c';
-    const EDAMAM_APP_KEY = 'f1dbfd8a80fa0f7d42f61a93d7527182';
+    appContainer.innerHTML = `<p class="text-red-400 p-4 bg-red-900 rounded-lg">${errorMsg}</p>`;
+    console.error(errorMsg);
+    return; // Stop execution
+  }
 
-    // --- GLOBAL STATE ---
-    let currentUser = null;
-    let workoutHistory = [];
-    let dailyFoods = {};
-    let currentWorkout = [];
-    let goals = {};
-    let selectedFoodData = null;
-    let progressChart, calorieHistoryChart, proteinHistoryChart, carbHistoryChart, fatHistoryChart;
-    const exerciseList = {
-        "Chest": ["Barbell Bench Press", "Incline Barbell Bench Press", "Decline Barbell Bench Press", "Dumbbell Bench Press", "Incline Dumbbell Press", "Decline Dumbbell Press", "Push-ups", "Dips", "Dumbbell Flyes", "Incline Dumbbell Flyes", "Cable Crossover", "Machine Chest Press", "Pec Deck Machine"],
-        "Back": ["Deadlift", "Pull-ups", "Chin-ups", "Bent-over Barbell Row", "Pendlay Row", "Dumbbell Row", "T-bar Row", "Seated Cable Row", "Lat Pulldown", "Good Mornings", "Back Extension", "Rack Pulls"],
-        "Legs (Quads, Hamstrings, Glutes)": ["Barbell Squat", "Front Squat", "Goblet Squat", "Leg Press", "Hack Squat", "Lunges", "Bulgarian Split Squat", "Romanian Deadlift", "Stiff-legged Deadlift", "Leg Curls", "Leg Extensions", "Glute Bridges", "Hip Thrusts"],
-        "Shoulders": ["Overhead Press (Barbell)", "Seated Dumbbell Press", "Arnold Press", "Lateral raises", "Front Raises", "Bent-over Dumbbell Raise", "Upright Row", "Face Pulls", "Barbell Shrugs", "Dumbbell Shrugs"],
-        "Biceps": ["Barbell Curl", "Dumbbell Curl", "Alternating Dumbbell Curl", "Hammer Curl", "Preacher Curl", "Concentration Curl", "Cable Curl", "Chin-ups"],
-        "Triceps": ["Close-grip Bench Press", "Dips", "Tricep Pushdowns", "Overhead Tricep Extension (Dumbbell/Cable)", "Skull Crushers", "Tricep Kickbacks", "Diamond Push-ups"],
-        "Calves": ["Standing Calf Raises", "Seated Calf Raises", "Leg Press Calf Raises"],
-        "Abs": ["Crunches", "Leg Raises", "Plank", "Side Plank", "Russian Twist", "Hanging Leg Raises", "Cable Crunches"],
-        "Forearms": ["Wrist Curls", "Reverse Wrist Curls", "Farmer's Walk"]
-    };
+  // --- Authentication ---
 
-    // --- DOM ELEMENTS ---
-    const authContainer = document.getElementById('auth-container');
-    const appContainer = document.getElementById('app-container');
-    const emailInput = document.getElementById('email');
-    const passwordInput = document.getElementById('password');
-    const loginBtn = document.getElementById('login-btn');
-    const signupBtn = document.getElementById('signup-btn');
-    const signoutBtn = document.getElementById('signout-btn');
-    const authError = document.getElementById('auth-error');
-    const showWorkoutTabBtn = document.getElementById('show-workout-tab');
-    const showFoodTabBtn = document.getElementById('show-food-tab');
-    const workoutTabContent = document.getElementById('workout-tab-content');
-    const foodTabContent = document.getElementById('food-tab-content');
-    const foodSearchForm = document.getElementById('food-search-form');
-    const searchResultsContainer = document.getElementById('search-results-container');
-    const selectedFoodContainer = document.getElementById('selected-food-container');
-    const workoutForm = document.getElementById('workout-form');
-    const exerciseSelect = document.getElementById('exercise-select');
-    const customExerciseContainer = document.getElementById('custom-exercise-container');
-    const customExerciseNameInput = document.getElementById('custom-exercise-name');
-    const currentWorkoutList = document.getElementById('current-workout-list');
-    const saveWorkoutBtn = document.getElementById('save-workout-btn');
-    const workoutHistoryList = document.getElementById('workout-history-list');
-    const dailyFoodLog = document.getElementById('daily-food-log');
-    const dailySummary = document.getElementById('daily-summary');
-    const chartPlaceholder = document.getElementById('chart-placeholder');
-    const progressChartCtx = document.getElementById('progress-chart').getContext('2d');
-    const calorieHistoryChartCtx = document.getElementById('calorie-history-chart').getContext('2d');
-    const proteinHistoryChartCtx = document.getElementById('protein-history-chart').getContext('2d');
-    const carbHistoryChartCtx = document.getElementById('carb-history-chart').getContext('2d');
-    const fatHistoryChartCtx = document.getElementById('fat-history-chart').getContext('2d');
-    const goalsForm = document.getElementById('goals-form');
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      console.log("User is signed in:", user.uid);
+      userId = user.uid;
+      userIdDisplay.textContent = userId;
+      
+      // Define the user-specific collection path
+      // We use a general "workouts" collection and filter by userId
+      workoutCollectionRef = collection(db, 'standalone_workouts');
+      templateCollectionRef = collection(db, 'standalone_templates');
+      
+      // Load data now that we are authenticated
+      loadWorkoutHistory();
+      loadWorkoutTemplates();
 
-    // --- AUTHENTICATION LOGIC ---
-    auth.onAuthStateChanged(async user => {
-        if (user) {
-            currentUser = user;
-            await loadData();
-            authContainer.style.display = 'none';
-            appContainer.style.display = 'block';
-        } else {
-            currentUser = null;
-            authContainer.style.display = 'flex';
-            appContainer.style.display = 'none';
-        }
+    } else {
+      console.log("No user found, attempting anonymous sign-in...");
+      userIdDisplay.textContent = 'Signing in...';
+      try {
+        // In a standalone app, we MUST use anonymous sign-in
+        // as there is no custom token provided.
+        await signInAnonymously(auth);
+      } catch (error) {
+        console.error("Authentication Error: ", error);
+        userIdDisplay.textContent = 'Auth Error';
+      }
+    }
+  });
+
+  // --- View Switching ---
+
+  function showView(view) {
+    logView.classList.add('hidden');
+    historyView.classList.add('hidden');
+    templatesView.classList.add('hidden');
+    progressView.classList.add('hidden');
+    
+    tabLog.classList.remove('border-b-2', 'border-amber-500', 'text-amber-500');
+    tabHistory.classList.remove('border-b-2', 'border-amber-500', 'text-amber-500');
+    tabTemplates.classList.remove('border-b-2', 'border-amber-500', 'text-amber-500');
+    tabProgress.classList.remove('border-b-2', 'border-amber-500', 'text-amber-500');
+    tabLog.classList.add('text-gray-400');
+    tabHistory.classList.add('text-gray-400');
+    tabTemplates.classList.add('text-gray-400');
+    tabProgress.classList.add('text-gray-400');
+
+    if (view === 'log') {
+      logView.classList.remove('hidden');
+      tabLog.classList.add('border-b-2', 'border-amber-500', 'text-amber-500');
+      tabLog.classList.remove('text-gray-400');
+    } else if (view === 'history') {
+      historyView.classList.remove('hidden');
+      tabHistory.classList.add('border-b-2', 'border-amber-500', 'text-amber-500');
+      tabHistory.classList.remove('text-gray-400');
+    } else if (view === 'templates') {
+      templatesView.classList.remove('hidden');
+      tabTemplates.classList.add('border-b-2', 'border-amber-500', 'text-amber-500');
+      tabTemplates.classList.remove('text-gray-400');
+    } else if (view === 'progress') {
+      progressView.classList.remove('hidden');
+      tabProgress.classList.add('border-b-2', 'border-amber-500', 'text-amber-500');
+      tabProgress.classList.remove('text-gray-400');
+      // Draw chart when view is shown
+      drawProgressChart(); 
+    }
+  }
+
+  tabLog.addEventListener('click', () => showView('log'));
+  tabHistory.addEventListener('click', () => showView('history'));
+  tabTemplates.addEventListener('click', () => showView('templates'));
+  tabProgress.addEventListener('click', () => showView('progress'));
+
+  // --- Utility Functions ---
+
+  function showMessage(message) {
+    messageText.textContent = message;
+    messageModal.classList.remove('hidden');
+  }
+
+  closeMessageBtn.addEventListener('click', () => {
+    messageModal.classList.add('hidden');
+  });
+
+  closePresetModalBtn.addEventListener('click', () => {
+    savePresetModal.classList.add('hidden');
+    presetNameInput.value = '';
+  });
+
+  // --- Log Workout Logic ---
+
+  // Set default date to today
+  workoutDateInput.valueAsDate = new Date();
+
+  // Add a new blank exercise form
+  addExerciseBtn.addEventListener('click', () => {
+    const exerciseId = `ex-${Date.now()}`;
+    
+    // Clone the template
+    const templateContent = exerciseTemplate.content.cloneNode(true);
+    const newExercise = templateContent.querySelector('.exercise-item');
+    newExercise.id = exerciseId;
+    
+    // Append the cloned node
+    currentWorkoutList.appendChild(newExercise);
+    
+    // Add a default set to the new strength exercise
+    addSet(newExercise.querySelector('.sets-list'));
+  });
+
+  // Handle dynamic events (add set, remove exercise, change type) using event delegation
+  currentWorkoutList.addEventListener('click', (e) => {
+    // Add Set
+    if (e.target.classList.contains('add-set-btn')) {
+      e.preventDefault();
+      const setsList = e.target.previousElementSibling;
+      addSet(setsList);
+    }
+    
+    // Remove Set
+    if (e.target.closest('.remove-set-btn')) {
+      e.preventDefault();
+      e.target.closest('.set-item').remove();
+    }
+
+    // Remove Exercise
+    if (e.target.closest('.remove-exercise-btn')) {
+      e.preventDefault();
+      e.target.closest('.exercise-item').remove();
+    }
+  });
+  
+  currentWorkoutList.addEventListener('change', (e) => {
+    // Change Exercise Type
+    if (e.target.classList.contains('exercise-type-select')) {
+      const exerciseItem = e.target.closest('.exercise-item');
+      const strengthInputs = exerciseItem.querySelector('.strength-inputs');
+      const cardioInputs = exerciseItem.querySelector('.cardio-inputs');
+      
+      if (e.target.value === 'strength') {
+        strengthInputs.classList.remove('hidden');
+        cardioInputs.classList.add('hidden');
+      } else {
+        strengthInputs.classList.add('hidden');
+        cardioInputs.classList.remove('hidden');
+      }
+    }
+  });
+
+  // Function to add a new set input row
+  function addSet(setsListContainer) {
+    // Clone the set template
+    const templateContent = setItemTemplate.content.cloneNode(true);
+    setsListContainer.appendChild(templateContent);
+  }
+
+  // --- Save Workout & Template Logic ---
+
+  // Helper function to get current exercises from the form
+  function getCurrentExercisesFromForm() {
+    const exercises = [];
+    const exerciseItems = currentWorkoutList.querySelectorAll('.exercise-item');
+    let valid = true;
+
+    if (exerciseItems.length === 0) {
+      return { valid: false, exercises: [], message: "Please add at least one exercise." };
+    }
+
+    exerciseItems.forEach(item => {
+      const name = item.querySelector('.exercise-name').value;
+      const type = item.querySelector('.exercise-type-select').value;
+      
+      if (!name) {
+        valid = false;
+      }
+
+      const exerciseData = { name, type };
+
+      if (type === 'strength') {
+        exerciseData.sets = [];
+        item.querySelectorAll('.set-item').forEach(setItem => {
+          const weight = setItem.querySelector('.set-weight').value;
+          const reps = setItem.querySelector('.set-reps').value;
+          exerciseData.sets.push({ 
+            weight: parseFloat(weight) || 0, 
+            reps: parseInt(reps) || 0 
+          });
+        });
+      } else {
+        const duration = item.querySelector('.cardio-duration').value;
+        const distance = item.querySelector('.cardio-distance').value;
+        exerciseData.duration = parseFloat(duration) || 0;
+        exerciseData.distance = parseFloat(distance) || 0;
+      }
+      exercises.push(exerciseData);
+    });
+    
+    if (!valid) {
+      return { valid: false, exercises: [], message: "Please enter a name for all exercises." };
+    }
+
+    return { valid: true, exercises: exercises };
+  }
+
+  // Save workout to Firestore
+  saveWorkoutBtn.addEventListener('click', async () => {
+    if (!workoutCollectionRef || !userId) {
+      showMessage("Error: Not connected to database.");
+      return;
+    }
+
+    const workoutDate = workoutDateInput.value; 
+    if (!workoutDate) {
+      showMessage("Please select a date.");
+      return;
+    }
+
+    const { valid, exercises, message } = getCurrentExercisesFromForm();
+
+    if (!valid) {
+      showMessage(message);
+      return;
+    }
+
+    // Save to Firestore
+    try {
+      saveWorkoutBtn.disabled = true;
+      saveWorkoutBtn.textContent = 'Saving...';
+      
+      await addDoc(workoutCollectionRef, {
+        ownerId: userId, // <-- IMPORTANT: Tag data with user ID
+        date: workoutDate,
+        exercises: exercises,
+        createdAt: serverTimestamp() // Used for reliable sorting
+      });
+
+      showMessage("Workout saved successfully!");
+      currentWorkoutList.innerHTML = ''; // Clear the form
+      workoutDateInput.valueAsDate = new Date(); // Reset date
+    
+    } catch (error) {
+      console.error("Error saving workout: ", error);
+      showMessage("Error: Could not save workout. Check Firestore rules.");
+    } finally {
+      saveWorkoutBtn.disabled = false;
+      saveWorkoutBtn.textContent = 'Save Workout';
+    }
+  });
+
+  // Open "Save as Preset" modal
+  savePresetBtn.addEventListener('click', () => {
+    const { valid, exercises } = getCurrentExercisesFromForm();
+    
+    if (!valid || exercises.length === 0) {
+      showMessage("Please add at least one exercise with a name to save a preset.");
+      return;
+    }
+    
+    // Show the modal
+    presetNameInput.value = '';
+    savePresetModal.classList.remove('hidden');
+    presetNameInput.focus();
+  });
+
+  // Confirm saving the preset from the modal
+  confirmSavePresetBtn.addEventListener('click', async () => {
+    const templateName = presetNameInput.value;
+    if (!templateName) {
+      showMessage("Please enter a name for the preset.");
+      return;
+    }
+
+    if (!templateCollectionRef || !userId) {
+      showMessage("Error: Not connected to database.");
+      return;
+    }
+    
+    const { valid, exercises } = getCurrentExercisesFromForm();
+
+    if (!valid) {
+      showMessage("Cannot save preset, form is invalid.");
+      return;
+    }
+
+    try {
+      confirmSavePresetBtn.disabled = true;
+      confirmSavePresetBtn.textContent = 'Saving...';
+      
+      await addDoc(templateCollectionRef, {
+        ownerId: userId, // <-- IMPORTANT: Tag data with user ID
+        templateName: templateName,
+        exercises: exercises,
+        createdAt: serverTimestamp()
+      });
+
+      showMessage("Preset saved successfully!");
+      savePresetModal.classList.add('hidden');
+      presetNameInput.value = '';
+
+    } catch (error) {
+      console.error("Error saving preset: ", error);
+      showMessage("Error: Could not save preset. Check Firestore rules.");
+    } finally {
+      confirmSavePresetBtn.disabled = false;
+      confirmSavePresetBtn.textContent = 'Save Preset';
+    }
+  });
+
+  
+  // --- History View Logic ---
+  
+  function loadWorkoutHistory() {
+    if (!workoutCollectionRef || !userId) {
+      historyListContainer.innerHTML = '<p class="text-gray-400">Connecting to database...</p>';
+      return;
+    }
+
+    historyListContainer.innerHTML = '<p class="text-gray-400">Loading workout history...</p>';
+
+    //
+    // ***************************************************************
+    // * IMPORTANT: This query requires Firestore Security Rules
+    // *
+    // * You MUST set up Firestore rules to allow this read.
+    // * Go to your Firebase project > Firestore > Rules and set:
+    // *
+    // * service cloud.firestore {
+    // * match /databases/{database}/documents {
+    // * // Allow users to read/write ONLY their own data
+    // * match /standalone_workouts/{docId} {
+    // * allow read, write, delete: if request.auth.uid == resource.data.ownerId;
+    // * }
+    // * match /standalone_templates/{docId} {
+    // * allow read, write, delete: if request.auth.uid == resource.data.ownerId;
+    // * }
+    // * // Allow users to CREATE data
+    // * match /standalone_workouts/{docId} {
+    // * allow create: if request.auth.uid == request.resource.data.ownerId;
+    // * }
+    // * match /standalone_templates/{docId} {
+    // * allow create: if request.auth.uid == request.resource.data.ownerId;
+    // * }
+    // * }
+    // * }
+    // *
+    // ***************************************************************
+    //
+    // Use the 'where' function imported at the top of the module
+    const q = query(workoutCollectionRef, where("ownerId", "==", userId));
+    isFirstHistoryLoad = true;
+    historyListContainer.innerHTML = '<p class="text-gray-400">Loading workout history...</p>';
+
+    onSnapshot(q, (snapshot) => {
+      // Update allWorkouts array for the progress graph
+      allWorkouts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      allWorkouts.sort((a, b) => {
+        if (a.date > b.date) return -1;
+        if (a.date < b.date) return 1;
+        const aTime = a.createdAt ? a.createdAt.toMillis() : 0;
+        const bTime = b.createdAt ? b.createdAt.toMillis() : 0;
+        return bTime - aTime;
+      });
+      
+      populateProgressExerciseSelect(allWorkouts); // Populate graph dropdown
+
+      // Handle empty state
+      if (snapshot.empty) {
+        historyListContainer.innerHTML = '<p class="text-gray-400">No workouts saved yet. Go log one!</p>';
+        return;
+      }
+
+      // On first load, render everything efficiently
+      if (isFirstHistoryLoad) {
+        isFirstHistoryLoad = false;
+        let html = '';
+        // We use the sorted allWorkouts array to render in the correct order
+        allWorkouts.forEach(workout => {
+          html += createHistoryItemHTML(workout);
+        });
+        historyListContainer.innerHTML = html;
+      } else {
+        // On subsequent updates, just process the changes
+        snapshot.docChanges().forEach((change) => {
+          const workout = { id: change.doc.id, ...change.doc.data() };
+          const workoutId = `workout-${workout.id}`;
+
+          if (change.type === 'added') {
+            const newWorkoutHtml = createHistoryItemHTML(workout);
+            // Find where to insert it based on date
+            const existingItems = historyListContainer.querySelectorAll('.workout-history-item');
+            let inserted = false;
+            for (const item of existingItems) {
+              const itemDate = item.dataset.date;
+              if (workout.date > itemDate) {
+                item.insertAdjacentHTML('beforebegin', newWorkoutHtml);
+                inserted = true;
+                break;
+              }
+            }
+            if (!inserted) {
+              historyListContainer.insertAdjacentHTML('beforeend', newWorkoutHtml);
+            }
+            // Remove "empty" message if it's there
+            const p = historyListContainer.querySelector('p');
+            if (p) p.remove();
+
+          } else if (change.type === 'modified') {
+            const existingEl = document.getElementById(workoutId);
+            if (existingEl) {
+              existingEl.outerHTML = createHistoryItemHTML(workout); // Replace it
+            }
+          } else if (change.type === 'removed') {
+            const existingEl = document.getElementById(workoutId);
+            if (existingEl) {
+              existingEl.remove();
+            }
+            if (historyListContainer.children.length === 0) {
+              historyListContainer.innerHTML = '<p class="text-gray-400">No workouts saved yet. Go log one!</p>';
+            }
+          }
+        });
+      }
+    }, (error) => {
+      console.error("Error loading history: ", error);
+      historyListContainer.innerHTML = `<p class="text-red-400">Error loading workout history. Did you set the <strong class="font-bold">Firestore Security Rules</strong>?</p>`;
+      isFirstHistoryLoad = true; // Reset on error
+    });
+  }
+
+  // New helper function to create HTML for a single history item
+  function createHistoryItemHTML(workout) {
+    const d = new Date(workout.date + 'T00:00:00'); // Ensure correct local date parsing
+    const displayDate = d.toLocaleDateString(undefined, { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
     });
 
-    const handleAuth = async (action) => {
-        const email = emailInput.value;
-        const password = passwordInput.value;
-        authError.textContent = '';
-        try {
-            if (action === 'signup') {
-                await auth.createUserWithEmailAndPassword(email, password);
-            } else {
-                await auth.signInWithEmailAndPassword(email, password);
-            }
-        } catch (error) {
-            authError.textContent = error.message;
-        }
-    };
+    let html = `
+      <div id="workout-${workout.id}" class="workout-history-item bg-gray-800 p-4 rounded-lg shadow-md mb-4 relative" data-date="${workout.date}">
+        <button class="delete-workout-btn absolute top-3 right-3 text-red-500 hover:text-red-400 p-1" data-id="${workout.id}" data-date="${displayDate}" title="Delete Workout">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+        </button>
+        
+        <h3 class="text-lg font-bold text-amber-500">${displayDate}</h3>
+        <ul class="mt-2 space-y-2">
+    `;
 
-    // --- TAB SWITCHING LOGIC ---
-    const handleTabSwitch = (tab) => {
-        workoutTabContent.classList.remove('active');
-        foodTabContent.classList.remove('active');
-        showWorkoutTabBtn.classList.remove('active');
-        showFoodTabBtn.classList.remove('active');
-        if (tab === 'workout') {
-            workoutTabContent.classList.add('active');
-            showWorkoutTabBtn.classList.add('active');
-        } else {
-            foodTabContent.classList.add('active');
-            showFoodTabBtn.classList.add('active');
-        }
-    };
+    workout.exercises.forEach(ex => {
+      html += `<li class="border-t border-gray-700 pt-2">
+        <p class="text-md font-semibold text-white">${ex.name} <span class="text-xs font-normal text-gray-400">(${ex.type})</span></p>
+      `;
 
-    // --- FIRESTORE DATA HANDLING ---
-    const saveData = async () => {
-        if (!currentUser) return;
-        const userRef = db.collection('users').doc(currentUser.uid);
-        try {
-            await userRef.set({ workoutHistory, dailyFoods, currentWorkout, goals });
-        } catch (error) {
-            console.error("Error saving data:", error);
-        }
-    };
-
-    const loadData = async () => {
-        if (!currentUser) return;
-        const userRef = db.collection('users').doc(currentUser.uid);
-        try {
-            const doc = await userRef.get();
-            if (doc.exists) {
-                const data = doc.data();
-                workoutHistory = data.workoutHistory || [];
-                dailyFoods = data.dailyFoods || {};
-                currentWorkout = data.currentWorkout || [];
-                goals = data.goals || {};
-            } else {
-                workoutHistory = [];
-                dailyFoods = {};
-                currentWorkout = [];
-                goals = {};
-            }
-            renderAll();
-        } catch (error) {
-            console.error("Error loading data:", error);
-        }
-    };
-
-    const renderAll = () => {
-        populateExerciseDropdown();
-        renderDailyFoods();
-        renderCurrentWorkout();
-        renderWorkoutHistory();
-        renderCalorieHistoryChart();
-        renderProteinHistoryChart();
-        renderCarbHistoryChart();
-        renderFatHistoryChart();
-        renderGoals();
-    };
-
-    const renderGoals = () => {
-        document.getElementById('goal-calories').value = goals.calories || '';
-        document.getElementById('goal-protein').value = goals.protein || '';
-        document.getElementById('goal-carbs').value = goals.carbs || '';
-        document.getElementById('goal-fat').value = goals.fat || '';
-    };
-
-    // --- FOOD TRACKER FUNCTIONS ---
-    const getTodayKey = () => new Date().toISOString().split('T')[0];
-
-    const searchFood = async (query) => {
-        if (EDAMAM_APP_ID === 'YOUR_EDAMAM_APP_ID_HERE' || EDAMAM_APP_KEY === 'YOUR_EDAMAM_APP_KEY_HERE') {
-            alert('Please add your Edamam App ID and Key to the script.js file.');
-            return;
-        }
-        searchResultsContainer.innerHTML = `<p class="placeholder">Searching...</p>`;
-        const url = `https://api.edamam.com/api/food-database/v2/parser?app_id=${EDAMAM_APP_ID}&app_key=${EDAMAM_APP_KEY}&ingr=${encodeURIComponent(query)}`;
-        try {
-            const response = await fetch(url);
-            const data = await response.json();
-            if (data.hints && data.hints.length > 0) {
-                displaySearchResults(data.hints);
-            } else {
-                searchResultsContainer.innerHTML = `<p class="placeholder">No results found.</p>`;
-            }
-        } catch (error) {
-            console.error("API Error:", error);
-            searchResultsContainer.innerHTML = `<p class="placeholder">Error fetching data.</p>`;
-        }
-    };
-
-    const displaySearchResults = (hints) => {
-        searchResultsContainer.innerHTML = '';
-        hints.forEach(hint => {
-            const food = hint.food;
-            const item = document.createElement('div');
-            item.className = 'search-result-item';
-            let brandText = food.brand ? `<div class="result-brand">${food.brand}</div>` : '';
-            item.innerHTML = `<div>${food.label}${brandText}</div>`;
-            item.addEventListener('click', () => selectFood(food, hint.measures));
-            searchResultsContainer.appendChild(item);
+      if (ex.type === 'strength') {
+        html += '<ul class="pl-4 mt-1 text-sm text-gray-300">';
+        ex.sets.forEach((set, index) => {
+          html += `<li>Set ${index + 1}: ${set.weight} lbs x ${set.reps} reps</li>`;
         });
-    };
-
-    const selectFood = (food, measures) => {
-        const nutrients = food.nutrients;
-        const nutrientsPer100g = {
-            calories: nutrients.ENERC_KCAL || 0, protein: nutrients.PROCNT || 0,
-            fat: nutrients.FAT || 0, carbs: nutrients.CHOCDF || 0,
-        };
-        selectedFoodData = { name: food.label, nutrientsPer100g: nutrientsPer100g };
-        searchResultsContainer.innerHTML = '';
-        selectedFoodContainer.style.display = 'block';
-        let servingInfoText = '';
-        const primaryMeasure = measures.find(m => m.label.toLowerCase() === 'serving') || measures[0];
-        if (primaryMeasure) {
-            const servingCalories = (nutrientsPer100g.calories / 100) * primaryMeasure.weight;
-            servingInfoText = ` | <strong>${servingCalories.toFixed(0)} kcal</strong> per ${primaryMeasure.label}`;
-        }
-        let unitsOptions = `<option value="100">100 grams</option>`;
-        if (measures && measures.length > 0) {
-            unitsOptions += measures.map(measure => `<option value="${measure.weight}">${measure.label}</option>`).join('');
-        }
-        selectedFoodContainer.innerHTML = `
-            <h3>${food.label}</h3>
-            <p class="nutrient-info">Per 100g: <strong>${nutrientsPer100g.calories.toFixed(0)} kcal</strong>${servingInfoText}</p>
-            <p class="nutrient-info">Macros per 100g: P: ${nutrientsPer100g.protein.toFixed(1)}g, C: ${nutrientsPer100g.carbs.toFixed(1)}g, F: ${nutrientsPer100g.fat.toFixed(1)}g</p>
-            <div class="quantity-input-group"><input type="number" id="food-quantity" step="any" placeholder="e.g., 1.5" min="0" required><select id="food-unit">${unitsOptions}</select></div>
-            <button id="add-food-btn" class="btn">Add Food</button>
-        `;
-        document.getElementById('add-food-btn').addEventListener('click', addFoodToLog);
-        document.getElementById('food-quantity').focus();
-    };
-
-    const addFoodToLog = () => {
-        const quantityInput = document.getElementById('food-quantity');
-        const unitSelect = document.getElementById('food-unit');
-        const quantity = parseFloat(quantityInput.value);
-        const unitGramWeight = parseFloat(unitSelect.value);
-        const unitText = unitSelect.options[unitSelect.selectedIndex].text;
-        if (!quantity || quantity <= 0) { alert("Please enter a valid quantity."); return; }
-        const totalGrams = quantity * unitGramWeight;
-        const scale = totalGrams / 100;
-        const base = selectedFoodData.nutrientsPer100g;
-        const loggedFood = {
-            name: selectedFoodData.name, quantity: quantity, unit: unitText,
-            calories: base.calories * scale, protein: base.protein * scale,
-            carbs: base.carbs * scale, fat: base.fat * scale,
-        };
-        const todayKey = getTodayKey();
-        if (!dailyFoods[todayKey]) { dailyFoods[todayKey] = []; }
-        dailyFoods[todayKey].push(loggedFood);
-        saveData();
-        renderDailyFoods();
-        renderCalorieHistoryChart();
-        renderProteinHistoryChart();
-        renderCarbHistoryChart();
-        renderFatHistoryChart();
-        selectedFoodContainer.innerHTML = '';
-        selectedFoodContainer.style.display = 'none';
-        document.getElementById('food-search-input').value = '';
-    };
-
-    const renderDailyFoods = () => {
-        const todayKey = getTodayKey();
-        const foods = dailyFoods[todayKey] || [];
-        dailySummary.innerHTML = '';
-        if (foods.length === 0) {
-            dailyFoodLog.innerHTML = `<p class="placeholder">No food logged for today.</p>`;
-            return;
-        }
-        let totalCals = 0, totalProtein = 0, totalCarbs = 0, totalFat = 0;
-        const foodList = document.createElement('ul');
-        const removeIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
-        foods.forEach((food, index) => {
-            totalCals += food.calories;
-            totalProtein += food.protein;
-            totalCarbs += food.carbs;
-            totalFat += food.fat;
-            const li = document.createElement('li');
-            li.innerHTML = `<div class="food-item-details"><div class="list-item-main">${food.name}</div><div class="list-item-details">${food.quantity} ${food.unit} - ${Math.round(food.calories)} kcal</div></div><button class="btn-remove" data-index="${index}">${removeIconSVG}</button>`;
-            foodList.appendChild(li);
-        });
-        dailyFoodLog.innerHTML = '';
-        dailyFoodLog.appendChild(foodList);
-        const calGoal = goals.calories ? ` / ${goals.calories}` : '';
-        const proGoal = goals.protein ? ` / ${goals.protein}g` : 'g';
-        const carbGoal = goals.carbs ? ` / ${goals.carbs}g` : 'g';
-        const fatGoal = goals.fat ? ` / ${goals.fat}g` : 'g';
-        dailySummary.innerHTML = `
-            <p><span>Total Calories:</span> <strong>~${Math.round(totalCals)}<span class="summary-goal">${calGoal}</span></strong></p>
-            <p><span>Protein:</span> <strong>${Math.round(totalProtein)}<span class="summary-goal">${proGoal}</span></strong></p>
-            <p><span>Carbs:</span> <strong>${Math.round(totalCarbs)}<span class="summary-goal">${carbGoal}</span></strong></p>
-            <p><span>Fat:</span> <strong>${Math.round(totalFat)}<span class="summary-goal">${fatGoal}</span></strong></p>
-        `;
-    };
-
-    // --- WORKOUT TRACKER FUNCTIONS ---
-    const populateExerciseDropdown = () => {
-        exerciseSelect.innerHTML = `<option value="">Choose an exercise...</option>`;
-        for (const group in exerciseList) {
-            const optgroup = document.createElement('optgroup');
-            optgroup.label = group;
-            exerciseList[group].forEach(exercise => {
-                const option = document.createElement('option');
-                option.value = exercise;
-                option.textContent = exercise;
-                optgroup.appendChild(option);
-            });
-            exerciseSelect.appendChild(optgroup);
-        }
-        const customOption = document.createElement('option');
-        customOption.value = 'custom';
-        customOption.textContent = '— Add new exercise —';
-        exerciseSelect.appendChild(customOption);
-    };
-
-    const renderCurrentWorkout = () => {
-        currentWorkoutList.innerHTML = '';
-        if (currentWorkout.length === 0) {
-            currentWorkoutList.innerHTML = `<p class="placeholder">Your current workout is empty.</p>`;
-            return;
-        }
-        currentWorkout.forEach((exercise, index) => {
-            const li = document.createElement('li');
-            const removeIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
-            li.innerHTML = `<div><div class="list-item-main">${exercise.name}</div><div class="list-item-details">${exercise.sets} sets, ${exercise.reps} reps @ ${exercise.weight}</div></div><button class="btn-remove" data-index="${index}">${removeIconSVG}</button>`;
-            currentWorkoutList.appendChild(li);
-        });
-    };
-
-    const renderWorkoutHistory = () => {
-        workoutHistoryList.innerHTML = '';
-        if (workoutHistory.length === 0) {
-            workoutHistoryList.innerHTML = `<p class="placeholder">No saved workouts yet.</p>`;
-            return;
-        }
-        workoutHistory.forEach(workout => {
-            const li = document.createElement('li');
-            const date = new Date(workout.date).toLocaleDateString();
-            li.innerHTML = `<div class="list-item-main">Workout on ${date} <span class="list-item-details">(${workout.exercises.length} exercises)</span></div>`;
-            const ul = document.createElement('ul');
-            workout.exercises.forEach(ex => {
-                const exLi = document.createElement('li');
-                exLi.className = 'exercise-details-history';
-                exLi.textContent = `${ex.name} - ${ex.sets}x${ex.reps} @ ${ex.weight}`;
-                exLi.addEventListener('click', () => renderProgressChart(ex.name));
-                ul.appendChild(exLi);
-            });
-            li.appendChild(ul);
-            workoutHistoryList.prepend(li);
-        });
-    };
-    
-    // --- CHART RENDERING FUNCTIONS ---
-    const renderProgressChart = (exerciseName) => {
-        const dataPoints = workoutHistory.flatMap(w => w.exercises.map(ex => ({ ...ex, date: w.date }))).filter(ex => ex.name.toLowerCase() === exerciseName.toLowerCase()).sort((a, b) => new Date(a.date) - new Date(b.date));
-        if (dataPoints.length > 1) {
-            chartPlaceholder.style.display = 'none';
-            document.getElementById('progress-chart').style.display = 'block';
-            if (progressChart) progressChart.destroy();
-            progressChart = new Chart(progressChartCtx, {
-                type: 'line',
-                data: {
-                    labels: dataPoints.map(d => new Date(d.date).toLocaleDateString()),
-                    datasets: [{ label: `Weight Progression for ${exerciseName}`, data: dataPoints.map(d => d.weight), borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', fill: true, tension: 0.2 }]
-                },
-                options: { responsive: true, maintainAspectRatio: false }
-            });
-        } else {
-            chartPlaceholder.textContent = `Not enough data to chart "${exerciseName}". Log it at least twice.`;
-            chartPlaceholder.style.display = 'block';
-            document.getElementById('progress-chart').style.display = 'none';
-        }
-    };
-    
-    const getWeeklyNutritionData = () => {
-        const labels = [], calorieData = [], proteinData = [], carbData = [], fatData = [];
-        for (let i = 6; i >= 0; i--) {
-            const date = new Date();
-            date.setDate(date.getDate() - i);
-            const dateKey = date.toISOString().split('T')[0];
-            labels.push(date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
-            const foods = dailyFoods[dateKey] || [];
-            let totalCals = 0, totalProtein = 0, totalCarbs = 0, totalFat = 0;
-            foods.forEach(food => { 
-                totalCals += food.calories; totalProtein += food.protein; 
-                totalCarbs += food.carbs; totalFat += food.fat;
-            });
-            calorieData.push(totalCals); proteinData.push(totalProtein);
-            carbData.push(totalCarbs); fatData.push(totalFat);
-        }
-        return { labels, calorieData, proteinData, carbData, fatData };
-    };
-
-    const createBarChart = (ctx, chartInstance, data, color, showXAxisLabels) => {
-        if (chartInstance) { chartInstance.destroy(); }
-        return new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: data.labels,
-                datasets: [{ 
-                    label: '', 
-                    data: data.values, 
-                    backgroundColor: `rgba(${color}, 0.5)`, 
-                    borderColor: `rgba(${color}, 1)`,
-                    borderWidth: 1,
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    y: { 
-                        beginAtZero: true,
-                        ticks: { color: '#9ca3af' }, 
-                        grid: { color: 'rgba(55, 65, 81, 0.5)' } 
-                    },
-                    x: {
-                        ticks: { 
-                            color: '#9ca3af',
-                            callback: function(value, index, ticks) {
-                                // Only show the label if showXAxisLabels is true
-                                return showXAxisLabels ? this.getLabelForValue(value) : '';
-                            }
-                        },
-                        grid: { color: 'rgba(55, 65, 81, 0.5)' }
-                    }
-                }
-            }
-        });
-    };
-
-    const renderCalorieHistoryChart = () => {
-        const { labels, calorieData } = getWeeklyNutritionData();
-        calorieHistoryChart = createBarChart(calorieHistoryChartCtx, calorieHistoryChart, { labels: labels, values: calorieData }, '59, 130, 246', false);
-    };
-    const renderProteinHistoryChart = () => {
-        const { labels, proteinData } = getWeeklyNutritionData();
-        proteinHistoryChart = createBarChart(proteinHistoryChartCtx, proteinHistoryChart, { labels: labels, values: proteinData }, '52, 211, 153', false);
-    };
-    const renderCarbHistoryChart = () => {
-        const { labels, carbData } = getWeeklyNutritionData();
-        carbHistoryChart = createBarChart(carbHistoryChartCtx, carbHistoryChart, { labels: labels, values: carbData }, '251, 191, 36', false);
-    };
-    const renderFatHistoryChart = () => {
-        const { labels, fatData } = getWeeklyNutritionData();
-        // The last chart will show the X-axis labels for all of them.
-        fatHistoryChart = createBarChart(fatHistoryChartCtx, fatHistoryChart, { labels: labels, values: fatData }, '248, 113, 113', true);
-    };
-
-    // --- EVENT LISTENERS ---
-    loginBtn.addEventListener('click', () => handleAuth('login'));
-    signupBtn.addEventListener('click', () => handleAuth('signup'));
-    signoutBtn.addEventListener('click', () => auth.signOut());
-    showWorkoutTabBtn.addEventListener('click', () => handleTabSwitch('workout'));
-    showFoodTabBtn.addEventListener('click', () => handleTabSwitch('food'));
-    foodSearchForm.addEventListener('submit', (e) => { e.preventDefault(); const query = document.getElementById('food-search-input').value.trim(); if (query) { searchFood(query); selectedFoodContainer.style.display = 'none'; } });
-    dailyFoodLog.addEventListener('click', (e) => { const removeButton = e.target.closest('.btn-remove'); if (removeButton) { const index = parseInt(removeButton.dataset.index, 10); const todayKey = getTodayKey(); if (dailyFoods[todayKey]) { dailyFoods[todayKey].splice(index, 1); saveData(); renderDailyFoods(); renderCalorieHistoryChart(); renderProteinHistoryChart(); renderCarbHistoryChart(); renderFatHistoryChart(); } } });
-    exerciseSelect.addEventListener('change', () => { if (exerciseSelect.value === 'custom') { customExerciseContainer.style.display = 'block'; customExerciseNameInput.focus(); } else { customExerciseContainer.style.display = 'none'; } });
-    workoutForm.addEventListener('submit', (e) => { e.preventDefault(); let exerciseName; if (exerciseSelect.value === 'custom') { exerciseName = customExerciseNameInput.value.trim(); if (!exerciseName) { alert('Please enter a name for your custom exercise.'); return; } } else { exerciseName = exerciseSelect.value; } if (!exerciseName) { alert('Please select an exercise.'); return; } const exercise = { name: exerciseName, sets: parseFloat(document.getElementById('sets').value), reps: parseFloat(document.getElementById('reps').value), weight: parseFloat(document.getElementById('weight').value) || 0, }; currentWorkout.push(exercise); renderCurrentWorkout(); saveData(); workoutForm.reset(); customExerciseContainer.style.display = 'none'; exerciseSelect.value = ''; });
-    currentWorkoutList.addEventListener('click', (e) => { const removeButton = e.target.closest('.btn-remove'); if (removeButton) { const index = removeButton.dataset.index; currentWorkout.splice(index, 1); renderCurrentWorkout(); saveData(); } });
-    saveWorkoutBtn.addEventListener('click', () => { if (currentWorkout.length === 0) { alert("Your current workout is empty!"); return; } const workout = { date: new Date().toISOString(), exercises: currentWorkout }; workoutHistory.push(workout); currentWorkout = []; saveData(); renderCurrentWorkout(); renderWorkoutHistory(); alert("Workout saved successfully!"); });
-    goalsForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        goals = {
-            calories: parseFloat(document.getElementById('goal-calories').value) || 0,
-            protein: parseFloat(document.getElementById('goal-protein').value) || 0,
-            carbs: parseFloat(document.getElementById('goal-carbs').value) || 0,
-            fat: parseFloat(document.getElementById('goal-fat').value) || 0,
-        };
-        saveData();
-        renderDailyFoods();
-        alert('Goals saved!');
+        html += '</ul>';
+      } else {
+        html += '<p class="pl-4 mt-1 text-sm text-gray-300">';
+        if (ex.duration) html += `${ex.duration} minutes `;
+        if (ex.distance) html += ` / ${ex.distance} mi/km`;
+        html += '</p>';
+      }
+      html += '</li>';
     });
-});
+
+    html += `
+        </ul>
+      </div>
+    `;
+    return html;
+  }
+  
+  // --- History Deletion Logic ---
+  
+  historyListContainer.addEventListener('click', (e) => {
+    const deleteBtn = e.target.closest('.delete-workout-btn');
+    if (deleteBtn) {
+      workoutToDelete = deleteBtn.dataset.id;
+      const workoutDate = deleteBtn.dataset.date;
+      deleteConfirmText.textContent = `Are you sure you want to delete the workout from ${workoutDate}? This action cannot be undone.`;
+      deleteConfirmModal.classList.remove('hidden');
+    }
+  });
+
+  cancelDeleteBtn.addEventListener('click', () => {
+    deleteConfirmModal.classList.add('hidden');
+    workoutToDelete = null;
+  });
+
+  confirmDeleteBtn.addEventListener('click', async () => {
+    if (!workoutToDelete) return;
+
+    try {
+      confirmDeleteBtn.disabled = true;
+      confirmDeleteBtn.textContent = 'Deleting...';
+      
+      // Note: We use workoutCollectionRef (the base collection) and provide the full path
+      const docRef = doc(db, 'standalone_workouts', workoutToDelete);
+      await deleteDoc(docRef);
+      
+      showMessage("Workout deleted successfully.");
+
+    } catch (error) {
+      console.error("Error deleting workout: ", error);
+      showMessage("Error: Could not delete workout.");
+    } finally {
+      deleteConfirmModal.classList.add('hidden');
+      workoutToDelete = null;
+      confirmDeleteBtn.disabled = false;
+      confirmDeleteBtn.textContent = 'Confirm Delete';
+    }
+  });
+
+
+  // --- Template (Preset) Logic ---
+
+  async function loadWorkoutTemplates() {
+    if (!templateCollectionRef || !userId) {
+      return;
+    }
+    
+    isFirstTemplateLoad = true;
+    
+    // Use the 'where' function imported at the top of the module
+    const q = query(templateCollectionRef, where("ownerId", "==", userId));
+
+    onSnapshot(q, (snapshot) => {
+      // Full data replacement for the dropdown
+      let templates = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      templates.sort((a, b) => a.templateName.localeCompare(b.templateName));
+      renderTemplateDropdown(templates);
+
+      // Handle empty state
+      if (snapshot.empty) {
+        templatesListContainer.innerHTML = '<p class="text-gray-400">No presets saved yet.</p>';
+        return;
+      }
+
+      // Efficient DOM updates for the Template View
+      if (isFirstTemplateLoad) {
+        isFirstTemplateLoad = false;
+        let html = '';
+        templates.forEach(template => {
+          html += createTemplateItemHTML(template);
+        });
+        templatesListContainer.innerHTML = html;
+      } else {
+        snapshot.docChanges().forEach((change) => {
+          const template = { id: change.doc.id, ...change.doc.data() };
+          const templateId = `template-${template.id}`;
+
+          if (change.type === 'added') {
+            const newTemplateHtml = createTemplateItemHTML(template);
+            // Find where to insert it based on name
+            const existingItems = templatesListContainer.querySelectorAll('.template-item');
+            let inserted = false;
+            for (const item of existingItems) {
+              const itemName = item.dataset.name;
+              if (template.templateName.localeCompare(itemName) < 0) {
+                item.insertAdjacentHTML('beforebegin', newTemplateHtml);
+                inserted = true;
+                break;
+              }
+            }
+            if (!inserted) {
+              templatesListContainer.insertAdjacentHTML('beforeend', newTemplateHtml);
+            }
+            const p = templatesListContainer.querySelector('p');
+            if (p) p.remove();
+
+          } else if (change.type === 'modified') {
+            const existingEl = document.getElementById(templateId);
+            if (existingEl) {
+              existingEl.outerHTML = createTemplateItemHTML(template); // Replace it
+            }
+          } else if (change.type === 'removed') {
+            const existingEl = document.getElementById(templateId);
+            if (existingEl) {
+              existingEl.remove();
+            }
+            if (templatesListContainer.children.length === 0) {
+              templatesListContainer.innerHTML = '<p class="text-gray-400">No presets saved yet.</p>';
+            }
+          }
+        });
+      }
+
+    }, (error) => {
+      console.error("Error loading templates: ", error);
+      templatesListContainer.innerHTML = `<p class="text-red-400">Error loading templates. Did you set the <strong class="font-bold">Firestore Security Rules</strong>?</p>`;
+      isFirstTemplateLoad = true; // Reset on error
+    });
+  }
+
+  function renderTemplateDropdown(templates) {
+    let html = '<option value="">-- Load from Preset --</option>';
+    templates.forEach(template => {
+      // Store exercises in data attribute, escaping single quotes
+      const exercisesJson = JSON.stringify(template.exercises).replace(/'/g, '&apos;');
+      html += `<option value="${template.id}" data-exercises='${exercisesJson}'>
+        ${template.templateName}
+      </option>`;
+    });
+    loadPresetSelect.innerHTML = html;
+  }
+  
+  // New helper function to create HTML for a single template item
+  function createTemplateItemHTML(template) {
+    const exercisesJson = JSON.stringify(template.exercises).replace(/'/g, '&apos;');
+      
+    let html = `
+      <div id="template-${template.id}" class="template-item bg-gray-800 p-4 rounded-lg shadow-md" data-name="${template.templateName}">
+        <div class="flex justify-between items-center mb-2">
+            <h3 class="text-lg font-bold text-white">${template.templateName}</h3>
+            <button class="delete-preset-btn text-red-500 hover:text-red-400 p-1" data-id="${template.id}" title="Delete Preset">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+            </button>
+          </div>
+          <ul class="pl-4 space-y-1 list-disc list-inside text-sm text-gray-300 mb-4">
+    `;
+
+    template.exercises.forEach(ex => {
+      html += `<li>${ex.name} (${ex.type})</li>`;
+    });
+
+    html += `
+        </ul>
+        <button class="load-preset-from-view-btn w-full bg-amber-600 hover:bg-amber-500 text-white font-semibold py-2 px-4 rounded-lg" data-exercises='${exercisesJson}'>
+          Load Preset
+        </button>
+      </div>
+    `;
+    return html;
+  }
+
+  // Handle loading a preset from the dropdown
+  loadPresetSelect.addEventListener('change', (e) => {
+    const selectedOption = e.target.options[e.target.selectedIndex];
+    if (!selectedOption.value) return;
+
+    const exercises = JSON.parse(selectedOption.dataset.exercises.replace(/&apos;/g, "'"));
+    populateWorkoutForm(exercises);
+    
+    // Reset dropdown
+    e.target.value = '';
+  });
+
+  // Handle events in the Templates view
+  templatesListContainer.addEventListener('click', async (e) => {
+    // Load Preset
+    const loadBtn = e.target.closest('.load-preset-from-view-btn');
+    if (loadBtn) {
+      const exercises = JSON.parse(loadBtn.dataset.exercises.replace(/&apos;/g, "'"));
+      populateWorkoutForm(exercises);
+      showView('log'); // Switch to log view
+      return;
+    }
+
+    // Delete Preset
+    const deleteBtn = e.target.closest('.delete-preset-btn');
+    if (deleteBtn) {
+      const templateId = deleteBtn.dataset.id;
+      if (templateId) {
+        // Note: In a real app, you'd add a confirmation modal here too.
+        try {
+          const docRef = doc(db, 'standalone_templates', templateId);
+          await deleteDoc(docRef);
+          showMessage("Template deleted.");
+        } catch (error) {
+          console.error("Error deleting template: ", error);
+          showMessage("Error: Could not delete template.");
+        }
+      }
+    }
+  });
+
+  // --- Progress Graph Logic ---
+
+  // New helper function to calculate 1-Rep Max
+  // Using the Brzycki formula
+  function calculate1RM(weight, reps) {
+    if (reps <= 0 || weight <= 0) return 0;
+    if (reps === 1) return weight;
+    // Formula is less accurate for high reps, but we'll apply it
+    return weight / (1.0278 - (0.0278 * reps));
+  }
+
+  function populateProgressExerciseSelect(workouts) {
+    const exercisesMap = new Map();
+    workouts.forEach(workout => {
+      workout.exercises.forEach(ex => {
+        if (!exercisesMap.has(ex.name)) {
+          exercisesMap.set(ex.name, ex.type);
+        }
+      });
+    });
+
+    if (exercisesMap.size === 0) {
+      progressExerciseSelect.innerHTML = '<option value="">No exercises logged</option>';
+      return;
+    }
+
+    let html = '<option value="">-- Select Exercise --</option>';
+    exercisesMap.forEach((type, name) => {
+      html += `<option value="${name}" data-type="${type}">${name}</option>`;
+    });
+    progressExerciseSelect.innerHTML = html;
+
+    // Auto-populate metrics for the first exercise if available
+    if (exercisesMap.size > 0) {
+      const firstType = exercisesMap.values().next().value;
+      populateProgressMetricSelect(firstType);
+    }
+  }
+
+  function populateProgressMetricSelect(exerciseType) {
+    let html = '';
+    if (exerciseType === 'strength') {
+      html = `
+        <option value="maxWeight">Calculated 1-Rep Max (lbs)</option>
+        <option value="totalVolume">Total Volume (Weight x Reps)</option>
+        <option valueVlue="maxReps">Max Reps</option>
+      `;
+    } else if (exerciseType === 'cardio') {
+      html = `
+        <option value="duration">Duration (min)</option>
+        <option value="distance">Distance (mi/km)</option>
+      `;
+    }
+    progressMetricSelect.innerHTML = html;
+  }
+
+  progressExerciseSelect.addEventListener('change', (e) => {
+    const selectedOption = e.target.options[e.target.selectedIndex];
+    if (selectedOption.value) {
+      const type = selectedOption.dataset.type;
+      populateProgressMetricSelect(type);
+    } else {
+      progressMetricSelect.innerHTML = '';
+    }
+    drawProgressChart();
+  });
+
+  progressMetricSelect.addEventListener('change', drawProgressChart);
+
+  function drawProgressChart() {
+    const selectedExercise = progressExerciseSelect.value;
+    const selectedMetric = progressMetricSelect.value;
+
+    if (chartInstance) {
+      chartInstance.destroy(); // Destroy old chart before drawing new one
+    }
+
+    if (!selectedExercise || !selectedMetric) {
+      return; // Don't draw if nothing is selected
+    }
+
+    const labels = [];
+    const data = [];
+
+    // Filter workouts that include the selected exercise
+    // We iterate in reverse to get oldest-to-newest for the chart
+    const reversedWorkouts = [...allWorkouts].reverse();
+    
+    reversedWorkouts.forEach(workout => {
+      const exercise = workout.exercises.find(ex => ex.name === selectedExercise);
+      
+      if (exercise) {
+        labels.push(workout.date); // Use date as label
+        let value = 0;
+
+        switch (selectedMetric) {
+          case 'maxWeight':
+            // Calculate the max 1RM for this workout
+            if (exercise.sets && exercise.sets.length > 0) {
+              const all1RMs = exercise.sets.map(s => calculate1RM(s.weight, s.reps));
+              value = Math.max(0, ...all1RMs);
+            } else {
+              value = 0;
+            }
+            break;
+          case 'totalVolume':
+            value = exercise.sets ? exercise.sets.reduce((total, set) => total + (set.weight * set.reps), 0) : 0;
+            break;
+          case 'maxReps':
+            value = exercise.sets ? Math.max(0, ...exercise.sets.map(s => s.reps)) : 0;
+            break;
+          case 'duration':
+            value = exercise.duration || 0;
+            break;
+          case 'distance':
+            value = exercise.distance || 0;
+            break;
+        }
+        data.push(value);
+      }
+    });
+
+    if (data.length === 0) {
+      // console.log("No data found for this metric.");
+      return;
+    }
+
+    const ctx = document.getElementById('progress-chart').getContext('2d');
+    chartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: `${selectedExercise} - ${progressMetricSelect.options[progressMetricSelect.selectedIndex].text}`,
+          data: data,
+          backgroundColor: 'rgba(247, 187, 5, 0.2)',
+          borderColor: 'rgba(247, 187, 5, 1)', // Amber color
+          borderWidth: 2,
+          tension: 0.1,
+          fill: true,
+          pointBackgroundColor: 'rgba(247, 187, 5, 1)',
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { color: '#d1d5db' }, // Light gray ticks
+            grid: { color: 'rgba(255, 255, 255, 0.1)' } // Faint grid lines
+          },
+          x: {
+            ticks: { color: '#d1d5db' },
+            grid: { display: false }
+          }
+        },
+        plugins: {
+          legend: {
+            labels: {
+              color: '#f3f4f6' // White legend text
+            }
+          },
+          tooltip: {
+            backgroundColor: '#1f2937',
+            titleColor: '#f3f4f6',
+            bodyColor: '#d1d5db'
+          }
+        }
+      }
+    });
+  }
+
+
+  // New function to fill the form from a preset
+  function populateWorkoutForm(exercises) {
+    currentWorkoutList.innerHTML = ''; // Clear existing form
+
+    exercises.forEach(ex => {
+      // Clone the exercise template
+      const templateContent = exerciseTemplate.content.cloneNode(true);
+      const newItem = templateContent.querySelector('.exercise-item');
+      newItem.id = `ex-${Date.now()}-${Math.random()}`;
+      
+      // Fill in the values
+      newItem.querySelector('.exercise-name').value = ex.name;
+      newItem.querySelector('.exercise-type-select').value = ex.type;
+
+      const strengthInputs = newItem.querySelector('.strength-inputs');
+      const cardioInputs = newItem.querySelector('.cardio-inputs');
+      const setsList = newItem.querySelector('.sets-list');
+
+      if (ex.type === 'strength') {
+        strengthInputs.classList.remove('hidden');
+        cardioInputs.classList.add('hidden');
+        
+        setsList.innerHTML = ''; // Clear any default sets from template
+        
+        ex.sets.forEach(set => {
+          // Clone the set template
+          const setTemplateContent = setItemTemplate.content.cloneNode(true);
+          const newSetItem = setTemplateContent.querySelector('.set-item');
+
+          // Populate and append the set
+          newSetItem.querySelector('.set-weight').value = set.weight;
+          newSetItem.querySelector('.set-reps').value = set.reps;
+          setsList.appendChild(newSetItem);
+        });
+
+      } else {
+        strengthInputs.classList.add('hidden');
+        cardioInputs.classList.remove('hidden');
+        newItem.querySelector('.cardio-duration').value = ex.duration;
+        newItem.querySelector('.cardio-distance').value = ex.distance;
+      }
+      
+      // Append the populated exercise item
+      currentWorkoutList.appendChild(newItem);
+    });
+  }
+
+}); // <-- End of DOMContentLoaded

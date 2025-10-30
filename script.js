@@ -33,15 +33,14 @@ setLogLevel('Debug');
 // *
 // ***************************************************************
 const firebaseConfig = {
-apiKey: "AIzaSyC-ri85nqnJGvrrj775WuejX-QwPAY_Gy8",
-authDomain: "fitness-tracker-995c6.firebaseapp.com",
-projectId: "fitness-tracker-995c6",
-storageBucket: "fitness-tracker-995c6.firebasestorage.app",
-messagingSenderId: "130310968795",
-appId: "1:130310968795:web:34cff6a756705cb8da03fe",
-measurementId: "G-VWVW12CGLV"
+  apiKey: "AIzaSyC-ri85nqnJGvrrj775WuejX-QwPAY_Gy8",
+  authDomain: "fitness-tracker-995c6.firebaseapp.com",
+  projectId: "fitness-tracker-995c6",
+  storageBucket: "fitness-tracker-995c6.firebasestorage.app",
+  messagingSenderId: "130310968795",
+  appId: "1:130310968795:web:34cff6a756705cb8da03fe",
+  measurementId: "G-VWVW12CGLV"
 };
-
 
 // Initialize Firebase
 let app, db, auth;
@@ -1028,3 +1027,4 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
 }); // <-- End of DOMContentLoaded
+

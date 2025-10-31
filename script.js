@@ -69,8 +69,8 @@ function cancelDelete() {
 }
 
 function showView(view) {
-    const views = ['log', 'history', 'templates', 'progress'];
-    const tabs = ['tab-log', 'tab-history', 'tab-templates', 'tab-progress'];
+    const views = ['log', 'history', 'templates'];
+    const tabs = ['tab-log', 'tab-history', 'tab-templates'];
     
     views.forEach(v => getRef(`${v}-view`).classList.add('hidden'));
     tabs.forEach(t => {
@@ -82,10 +82,6 @@ function showView(view) {
     const tabEl = getRef(`tab-${view}`);
     tabEl.classList.add('border-b-2', 'border-amber-500', 'text-amber-500');
     tabEl.classList.remove('text-gray-400');
-    
-    if (view === 'progress') {
-        drawProgressChart(); 
-    }
 }
 
 // --- Authentication Logic ---
@@ -255,7 +251,6 @@ function bindEventListeners() {
     getRef('tab-log').addEventListener('click', () => showView('log'));
     getRef('tab-history').addEventListener('click', () => showView('history'));
     getRef('tab-templates').addEventListener('click', () => showView('templates'));
-    getRef('tab-progress').addEventListener('click', () => showView('progress'));
 
     // Modal Events
     getRef('close-message-btn').addEventListener('click', closeMessageModal);
@@ -274,10 +269,6 @@ function bindEventListeners() {
     getRef('history-list-container').addEventListener('click', handleHistoryDeleteRequest);
     getRef('load-preset-select').addEventListener('change', handleLoadPresetSelect);
     getRef('templates-list-container').addEventListener('click', handleTemplateActions);
-
-    // Progress Events
-    getRef('progress-exercise-select').addEventListener('change', drawProgressChart);
-    getRef('progress-metric-select').addEventListener('change', drawProgressChart);
     
     // Initial view set
     showView('log');
@@ -623,8 +614,6 @@ function loadWorkoutHistory() {
             return bTime - aTime;
         });
         
-        populateProgressExerciseSelect(allWorkouts);
-
         if (snapshot.empty) {
             getRef('history-list-container').innerHTML = '<p class="text-gray-400">No workouts saved yet. Go log one!</p>';
             return;
@@ -790,225 +779,8 @@ function createTemplateItemHTML(template) {
 }
 
 
-// --- Progress Chart Logic ---
-
-function calculate1RM(weight, reps) {
-    if (reps <= 0 || weight <= 0) return 0;
-    if (reps === 1) return weight;
-    // Epley formula: Weight * (1 + (Reps / 30))
-    return weight * (1 + (reps / 30));
-}
-
-function populateProgressExerciseSelect(workouts) {
-    const exercisesMap = new Map();
-    workouts.forEach(workout => {
-        workout.exercises.forEach(ex => {
-            if (!exercisesMap.has(ex.name)) {
-                exercisesMap.set(ex.name, ex.type);
-            }
-        });
-    });
-
-    if (exercisesMap.size === 0) {
-        getRef('progress-exercise-select').innerHTML = '<option value="">No exercises logged</option>';
-        populateProgressMetricSelect(null);
-        return;
-    }
-
-    let html = '<option value="">-- Select Exercise --</option>';
-    let firstExerciseType = null;
-    exercisesMap.forEach((type, name) => {
-        if (!firstExerciseType) firstExerciseType = type;
-        html += `<option value="${name}" data-type="${type}">${name}</option>`;
-    });
-    getRef('progress-exercise-select').innerHTML = html;
-
-    // Reset metric select based on the first available exercise type if nothing is selected
-    const selectedEx = getRef('progress-exercise-select').value;
-    if (!selectedEx && firstExerciseType) {
-        populateProgressMetricSelect(firstExerciseType);
-    } else if (selectedEx) {
-        const type = getRef('progress-exercise-select').options[getRef('progress-exercise-select').selectedIndex].dataset.type;
-        populateProgressMetricSelect(type);
-    }
-}
-
-function populateProgressMetricSelect(exerciseType) {
-    let html = '';
-    const metricSelect = getRef('progress-metric-select');
-    if (exerciseType === 'strength') {
-        html = `
-            <option value="max1RM">Max Estimated 1RM (lbs)</option>
-            <option value="totalVolume">Total Volume (Weight x Reps)</option>
-            <option value="maxWeight">Max Weight Lifted</option>
-        `;
-    } else if (exerciseType === 'cardio') {
-        html = `
-            <option value="duration">Duration (min)</option>
-            <option value="distance">Distance (mi/km)</option>
-        `;
-    } else {
-        html = '<option value="">Select an exercise first</option>';
-    }
-    metricSelect.innerHTML = html;
-}
-
-function drawProgressChart() {
-    const selectedExerciseName = getRef('progress-exercise-select').value;
-    const selectedMetric = getRef('progress-metric-select').value;
-    const progressCanvas = getRef('progress-chart');
-
-    if (chartInstance) {
-        chartInstance.destroy();
-    }
-
-    if (!selectedExerciseName || !selectedMetric || allWorkouts.length === 0) {
-        return;
-    }
-    
-    const exerciseType = getRef('progress-exercise-select').options[getRef('progress-exercise-select').selectedIndex].dataset.type;
-    const dataPoints = [];
-
-    // 1. Filter workouts by selected exercise
-    const filteredWorkouts = allWorkouts
-        .filter(w => w.exercises.some(e => e.name === selectedExerciseName))
-        // Sort chronologically for the graph
-        .sort((a, b) => new Date(a.date) - new Date(b.date));
-
-    // 2. Extract data points
-    filteredWorkouts.forEach(workout => {
-        const relevantExercise = workout.exercises.find(e => e.name === selectedExerciseName);
-        let value = 0;
-
-        if (exerciseType === 'strength') {
-            if (selectedMetric === 'max1RM') {
-                value = relevantExercise.sets.reduce((max, set) => Math.max(max, calculate1RM(set.weight, set.reps)), 0);
-            } else if (selectedMetric === 'totalVolume') {
-                value = relevantExercise.sets.reduce((sum, set) => sum + (set.weight * set.reps), 0);
-            } else if (selectedMetric === 'maxWeight') {
-                value = relevantExercise.sets.reduce((max, set) => Math.max(max, set.weight), 0);
-            }
-        } else if (exerciseType === 'cardio') {
-            if (selectedMetric === 'duration') {
-                value = relevantExercise.duration || 0;
-            } else if (selectedMetric === 'distance') {
-                value = relevantExercise.distance || 0;
-            }
-        }
-        
-        // Only push if value is greater than zero
-        if (value > 0) {
-            dataPoints.push({
-                x: workout.date,
-                y: Math.round(value * 100) / 100 // Round to 2 decimal places
-            });
-        }
-    });
-    
-    if (dataPoints.length === 0) {
-        const ctx = progressCanvas.getContext('2d');
-        ctx.clearRect(0, 0, progressCanvas.width, progressCanvas.height);
-        ctx.fillStyle = '#4b5563';
-        ctx.font = '16px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('No trackable data for this metric.', progressCanvas.width / 2, progressCanvas.height / 2);
-        return;
-    }
-
-
-    // 3. Create Chart
-    const labels = dataPoints.map(p => p.x);
-    const data = dataPoints.map(p => p.y);
-    const units = {
-        max1RM: 'lbs', totalVolume: 'lbs', maxWeight: 'lbs',
-        duration: 'min', distance: 'mi/km'
-    }[selectedMetric];
-    const metricTitle = getRef('progress-metric-select').options[getRef('progress-metric-select').selectedIndex].text;
-
-
-    const ctx = progressCanvas.getContext('2d');
-    chartInstance = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: `${metricTitle} (${units})`,
-                borderColor: '#F59E0B', // Amber-500
-                backgroundColor: 'rgba(245, 158, 11, 0.2)',
-                tension: 0.3,
-                borderWidth: 3,
-                pointRadius: 5,
-                pointBackgroundColor: '#F59E0B',
-                pointHoverRadius: 7,
-                data: dataPoints,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            scales: {
-                x: {
-                    type: 'time',
-                    time: {
-                        unit: 'day',
-                        displayFormats: {
-                            day: 'MMM D'
-                        }
-                    },
-                    title: {
-                        display: true,
-                        text: 'Date',
-                        color: '#D1D5DB' // Gray-300
-                    },
-                    ticks: {
-                        color: '#D1D5DB'
-                    },
-                    grid: {
-                        color: '#374151' // Gray-700
-                    }
-                },
-                y: {
-                    title: {
-                        display: true,
-                        text: `${metricTitle} (${units})`,
-                        color: '#D1D5DB'
-                    },
-                    ticks: {
-                        color: '#D1D5DB'
-                    },
-                    grid: {
-                        color: '#374151'
-                    }
-                }
-            },
-            plugins: {
-                legend: {
-                    display: true,
-                    labels: {
-                        color: '#D1D5DB'
-                    }
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.dataset.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
-                            if (context.parsed.y !== null) {
-                                label += new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(context.parsed.y);
-                            }
-                            return label;
-                        }
-                    }
-                }
-            }
-        },
-    });
-}
-
-
 // --- Final Setup ---
 
 // Call the function defined in index.html to start the application setup
 window.initializeTracker(setupApp);
+

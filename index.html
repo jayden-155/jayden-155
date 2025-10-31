@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Username Workout Tracker</title>
+    <title>Workout Tracker</title>
+    
+    <!-- PWA Manifest Link (CRUCIAL FOR "ADD TO HOME SCREEN") -->
+    <link rel="manifest" href="./manifest.json">
     
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -263,7 +266,7 @@
     <!-- Firebase SDK Imports -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        // FIX: Added updateProfile to the import list from firebase-auth.js
+        // Corrected imports for Firebase Auth functions
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, query, onSnapshot, serverTimestamp, setLogLevel, deleteDoc, where, addDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
@@ -271,7 +274,6 @@
         // which will be called from app.js when the document is ready.
         window.initializeTracker = (setupApp) => {
             setupApp(
-                // Passing all auth modules, including the newly imported updateProfile
                 { initializeApp, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile },
                 { getFirestore, collection, query, onSnapshot, serverTimestamp, setLogLevel, deleteDoc, where, addDoc, doc }
             );

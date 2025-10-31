@@ -243,7 +243,16 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         // Corrected imports for Firebase Auth functions
-        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { 
+  getAuth, 
+  onAuthStateChanged, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword,     
+  signOut,
+  updateProfile,
+  setPersistence,          
+  browserLocalPersistence
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, query, onSnapshot, serverTimestamp, setLogLevel, deleteDoc, where, addDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // Pass Firebase utilities and the main logic into a globally accessible function
@@ -261,4 +270,5 @@
 
 </body>
 </html>
+
 

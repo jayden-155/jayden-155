@@ -234,6 +234,13 @@ function setupApp(authModules, firestoreModules) {
 
     // 3. Attach Event Listeners
     document.addEventListener('DOMContentLoaded', bindEventListeners);
+    try {
+    // ... app and db initialization here ...
+    auth = getAuth(app);
+    console.log("Firebase Initialized Successfully");
+  } catch (e) {
+    console.error("Error initializing Firebase: ", e);
+  }
 }
 
 // Binds all DOM-related events
@@ -783,4 +790,5 @@ function createTemplateItemHTML(template) {
 
 // Call the function defined in index.html to start the application setup
 window.initializeTracker(setupApp);
+
 

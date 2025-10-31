@@ -57,7 +57,6 @@
                 <button id="tab-log" class="tab-btn py-3 px-4 sm:px-6 text-sm font-semibold transition duration-150 border-b-2 border-amber-500 text-amber-500">Log Workout</button>
                 <button id="tab-history" class="tab-btn py-3 px-4 sm:px-6 text-sm font-semibold text-gray-400 hover:text-white">History</button>
                 <button id="tab-templates" class="tab-btn py-3 px-4 sm:px-6 text-sm font-semibold text-gray-400 hover:text-white">Templates</button>
-                <button id="tab-progress" class="tab-btn py-3 px-4 sm:px-6 text-sm font-semibold text-gray-400 hover:text-white">Progress</button>
             </div>
 
             <!-- Log Workout View -->
@@ -112,29 +111,6 @@
                     <!-- Template items will be loaded here -->
                 </div>
             </div>
-
-            <!-- Progress View -->
-            <div id="progress-view" class="view hidden">
-                <h2 class="text-2xl font-bold text-white mb-4">Track Progress</h2>
-                <div class="bg-gray-800 p-6 rounded-xl shadow-2xl mb-6">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                        <div>
-                            <label for="progress-exercise-select" class="block text-gray-400 mb-1">Select Exercise:</label>
-                            <select id="progress-exercise-select" class="bg-gray-700 text-white p-2 rounded-lg w-full focus:ring-2 focus:ring-amber-500 border-none">
-                                <option value="">-- Select Exercise --</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label for="progress-metric-select" class="block text-gray-400 mb-1">Select Metric:</label>
-                            <select id="progress-metric-select" class="bg-gray-700 text-white p-2 rounded-lg w-full focus:ring-2 focus:ring-amber-500 border-none">
-                                <option value="">-- Select Metric --</option>
-                            </select>
-                        </div>
-                    </div>
-                    <canvas id="progress-chart" class="bg-gray-700 p-2 rounded-lg"></canvas>
-                </div>
-            </div>
-        </div>
         
         <!-- Templates (Hidden from view) -->
         <template id="exercise-template">
@@ -285,3 +261,4 @@
 
 </body>
 </html>
+

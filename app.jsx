@@ -8,12 +8,13 @@ import { ArrowLeft, Plus, Trash2, X, Zap, Dumbbell, History, ListChecks, Home, T
 
 // Replace these placeholders with your actual Firebase config details when deploying!
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_AUTH_DOMAIN",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID",
+  apiKey: "AIzaSyC-ri85nqnJGvrrj775WuejX-QwPAY_Gy8",
+  authDomain: "fitness-tracker-995c6.firebaseapp.com",
+  projectId: "fitness-tracker-995c6",
+  storageBucket: "fitness-tracker-995c6.firebasestorage.app",
+  messagingSenderId: "130310968795",
+  appId: "1:130310968795:web:34cff6a756705cb8da03fe",
+  measurementId: "G-VWVW12CGLV"
 };
 const appId = firebaseConfig.appId || 'default-app-id'; // Use Firebase App ID as the collection identifier
 
@@ -1433,6 +1434,7 @@ export default function App() {
         </div>
     );
 }
+
 
 
 
